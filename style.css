@@ -1,0 +1,36 @@
+body{
+    background-color:#303030;
+}
+
+.maintextcolor{
+    color: #808080;
+}
+
+.bgcol1{
+    background-color: #404040;
+    border: #404040;
+}
+.bgcol2{
+    background-color: #505050;
+    border: #505050;
+}
+
+.center-block {
+    display: block;
+    margin-right: auto;
+    margin-left: auto;
+}
+input{
+    padding: 5px;
+    text-align: center;
+    color:#dddddd;
+    border: 5px solid;
+    border-radius:8px;
+    outline:none;
+    transition-duration: 0.2s;
+} 
+input:focus{
+    border-radius:3px;
+    border: 5px solid #606060;
+    background-color: #505050;
+} 
