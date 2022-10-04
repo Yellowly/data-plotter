@@ -1,3 +1,5 @@
+use std::thread::current;
+
 use yew::prelude::*;
 use web_sys::{HtmlInputElement, HtmlCanvasElement, CanvasRenderingContext2d};
 use wasm_bindgen::{JsCast, JsValue};
@@ -59,18 +61,21 @@ impl Component for MainComponent{
     }
 
     fn view(&self, ctx: &Context<Self>) -> Html {
+        //let test_vals: Vec<f64> = vec![1.0,2.0,2.0,2.0,3.0,3.0,3.0,3.0,3.0,3.0,3.0,3.0,3.0,3.0,3.0,3.0,3.0,3.0,3.0,3.0,3.0,3.0,3.0,3.0,3.0,3.0,3.0,3.0,3.0,3.0,3.0,4.0,4.0];
+        let test_vals: Vec<f64> = vec![1.0,1.0,2.0,2.0,2.0,3.0,3.0,3.0,3.0,4.0,4.0,4.0,5.0,5.0,6.0];
         //background, secondary, text, accent, lines
         //#505050 or #808080 #ffffff for text
         let colors = vec!["#303030".to_string(), "#404040".to_string(), "#808080".to_string(), "#e2b831".to_string(), "#000000".to_string()];
         html!{
             <>
                 <InputGrid />
-                <DotPlotComponent points={vec![1.0,2.0,2.0,2.0,3.0,3.0,3.0,3.0,3.0,3.0,3.0,3.0,3.0,3.0,3.0,3.0,3.0,3.0,3.0,3.0,3.0,3.0,3.0,3.0,3.0,3.0,3.0,3.0,3.0,3.0,3.0,4.0,4.0]} width={1024.min((0.9*web_sys::window().unwrap().inner_width().unwrap().as_f64().unwrap_or(200.0)) as u32)} height=200 radius=5.0 colors={colors.clone()} />
+                <DotPlotComponent points={test_vals.clone()} width={1024.min((0.9*web_sys::window().unwrap().inner_width().unwrap().as_f64().unwrap_or(200.0)) as u32)} height=200 radius=5.0 colors={colors.clone()} />
                 <Bargraph width={1024.min((0.9*web_sys::window().unwrap().inner_width().unwrap().as_f64().unwrap_or(200.0)) as u32)} height={512} x_range={(0.0,100.0)} y_range={(0.0,100.0)} colors={colors.clone()} labels={(String::from(""), String::from(""))}>
                     <BargraphBar color={colors[3].clone()} width={(10.0,20.0)} height={(0.0,90.0)} label={String::from("")}/>
                     <BargraphBar color={colors[3].clone()} width={(20.0,30.0)} height={(0.0,50.0)} label={String::from("")}/>
                     <BargraphBar color={colors[3].clone()} width={(30.0,40.0)} height={(50.0,100.0)} label={String::from("")}/>
                 </Bargraph>
+                <BoxplotComponent width={1024.min((0.9*web_sys::window().unwrap().inner_width().unwrap().as_f64().unwrap_or(200.0)) as u32)} height={256} point_summery={PointSummery::create(test_vals.clone())} colors={colors.clone()} label={String::from("")}/>
             </>
         }
     }
@@ -182,6 +187,63 @@ impl Component for DotPlotComponent{
     }
 }
 
+#[derive(Clone, PartialEq, Default)]
+struct PointSummery{
+    mean: f64,
+    median: f64,
+    min: f64,
+    max: f64, 
+    q1: f64,
+    q3: f64,
+    standard_deviation: f64,
+    values: Vec<f64>,
+}
+impl PointSummery{
+    fn create(mut values: Vec<f64>) -> Self{
+        if values.is_empty(){
+            return Self::default()
+        }
+        values.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let min: f64 = values.first().unwrap_or(&0.0).clone();
+        let max: f64 = values.last().unwrap_or(&0.0).clone();
+        let mean: f64 = if values.len()==0 {0.0} else {values.iter().sum::<f64>()/values.len() as f64};
+        let medloc: f64 = ((values.len() - 1) as f64) / 2.0;
+        let median: f64 = if values.len()<3 {mean.clone()} else if medloc%1.0>0.01 {(values[medloc as usize]+values[medloc as usize + 1_usize]) as f64 / 2.0} else {values[medloc as usize]};
+        let q1: f64 = if values.len()<3 {min.clone()} else if (medloc/2.0)%1.0>0.01 {(values[(medloc-medloc/2.0) as usize]+values[(medloc-medloc/2.0) as usize + 1_usize]) as f64 / 2.0} else {values[(medloc-medloc/2.0) as usize]};
+        let q3: f64 = if values.len()<3 {max.clone()} else if (medloc/2.0)%1.0>0.01 {(values[(medloc+medloc/2.0) as usize]+values[(medloc+medloc/2.0) as usize + 1_usize]) as f64 / 2.0} else {values[(medloc+medloc/2.0) as usize]};
+        let varience: f64 = values.iter().map(|v| {
+            let diff: f64 = v - mean;
+            diff*diff
+        }).sum::<f64>() / values.len() as f64;
+        let sd: f64 = varience.sqrt();
+        Self{min, max, mean, median, q1, q3, standard_deviation: sd, values}
+    }
+    fn range_excluding_outliers(&self) -> (f64, f64){
+        let iqr: f64 = self.q3-self.q1;
+        let upper_fence: f64 = self.q3+1.5*iqr;
+        let lower_fence: f64 = self.q1-1.5*iqr;
+        (
+            if self.min>lower_fence {self.min.clone()} else {self.values.iter().find(|&v| v>=&lower_fence).unwrap_or(&self.min).clone()},
+            if self.max<upper_fence {self.max.clone()} else {self.values.iter().rev().find(|&v| v<=&upper_fence).unwrap_or(&self.max).clone()}
+        )
+    }
+    fn outliers(&self) -> Vec<f64>{
+        let iqr: f64 = self.q3-self.q1;
+        let upper_fence: f64 = self.q3+1.5*iqr;
+        let lower_fence: f64 = self.q1-1.5*iqr;
+        if self.min>lower_fence && self.max<upper_fence{
+            return Vec::new()
+        }
+        let mut res: Vec<f64> = Vec::new();
+        if self.min<lower_fence{
+            res.extend(self.values.iter().take_while(|v| **v<lower_fence));
+        }
+        if self.max>upper_fence{
+            res.extend(self.values.iter().rev().take_while(|v| **v>upper_fence));
+        }
+        res
+    }
+}
 struct HistogramProps{
     width: u32,
     height: u32,
@@ -189,28 +251,26 @@ struct HistogramProps{
     labels: (String, String)
 }
 
+#[derive(Clone, PartialEq, Properties)]
 struct BoxplotProps{
     width: u32,
     height: u32,
-    yrange: f64,
-    bars: Vec<BargraphBar>,
-    labels: (String, String),
+    colors: Vec<String>,
+    label: String,
+    point_summery: PointSummery
 }
 struct BoxplotComponent{
     canvas: NodeRef,
-    most_num_vals: u32,
-    range: (f64, f64)
 }
 impl Component for BoxplotComponent{
     type Message = PlotMsg;
-    type Properties = DotplotProps;
+    type Properties = BoxplotProps;
     fn create(_ctx: &Context<Self>) -> Self{
-        Self{canvas: NodeRef::default(), most_num_vals: max_duplicates(&_ctx.props().points), range: (*_ctx.props().points.first().unwrap_or(&0.0),*_ctx.props().points.last().unwrap_or(&0.0))}
+        Self{canvas: NodeRef::default()}
     }
 
     fn view(&self, ctx: &Context<Self>) -> Html {
         let link = ctx.link();
-        let radius = ctx.props().radius;
         html! {
             <div class = "center-block">
                 <canvas class="center-block" width={ctx.props().width.to_string()} height={ctx.props().height.to_string()} ref={self.canvas.clone()}/>
@@ -220,9 +280,52 @@ impl Component for BoxplotComponent{
     fn rendered(&mut self, ctx: &Context<Self>, _first_render: bool) {
         let canvas_ref: HtmlCanvasElement = self.canvas.cast::<HtmlCanvasElement>().unwrap();
         let context: CanvasRenderingContext2d = canvas_ref.get_context("2d").unwrap().unwrap().dyn_into::<CanvasRenderingContext2d>().unwrap();
-
-        //
+        let casted_dim: (f64, f64) = (ctx.props().width as f64, ctx.props().height as f64);
+        let pts: &PointSummery = &ctx.props().point_summery;
+        let graph_x_range: (f64, f64) = (10.0,casted_dim.0-10.0);
+        let graph_y_range: (f64, f64) = (casted_dim.1-20.0, 0.0);
+        let bar_buffer: f64 = 20.0;
+        let num_bars: f64 = 1.0;
+        let outlier_radius: f64 = 5.0;
+        let single_bar_height: f64 = (graph_y_range.0)/num_bars-bar_buffer; // set div to # bars
+        //line
+        draw_numberline(&context, (pts.min,pts.max), (graph_x_range.0,graph_y_range.0), (graph_x_range.1,graph_y_range.0), "15px Verdana", -10.0, &ctx.props().colors[4], &ctx.props().colors[2]);
+        //lines for boxes
+        let non_outlier_range: (f64, f64) = pts.range_excluding_outliers();
+        let temp: f64 = 0.0;
+        let current_bar_y_range: (f64, f64) = (graph_y_range.0-temp*((graph_y_range.0-graph_y_range.1).abs()/num_bars)-bar_buffer,graph_y_range.0-(temp+1.0)*((graph_y_range.0-graph_y_range.1).abs()/num_bars));
+        context.begin_path();
+        context.set_fill_style(&JsValue::from_str(&ctx.props().colors[3]));
+        context.move_to(map_value(non_outlier_range.0, (pts.min,pts.max), graph_x_range),current_bar_y_range.0-single_bar_height/2.0);
+        context.line_to(map_value(non_outlier_range.1, (pts.min,pts.max), graph_x_range),current_bar_y_range.0-single_bar_height/2.0);
+        context.move_to(map_value(non_outlier_range.0, (pts.min,pts.max), graph_x_range), current_bar_y_range.0-single_bar_height/4.0);
+        context.line_to(map_value(non_outlier_range.0, (pts.min,pts.max), graph_x_range),current_bar_y_range.1+single_bar_height/4.0);
+        context.move_to(map_value(non_outlier_range.1, (pts.min,pts.max), graph_x_range), current_bar_y_range.0-single_bar_height/4.0);
+        context.line_to(map_value(non_outlier_range.1, (pts.min,pts.max), graph_x_range),current_bar_y_range.1+single_bar_height/4.0);
+        context.stroke();
+        //boxes and circles
+        context.begin_path();
+        context.set_stroke_style(&JsValue::from_str(&ctx.props().colors[3]));
+        context.set_fill_style(&JsValue::from_str(&ctx.props().colors[3]));
+        for v in pts.outliers(){
+            let cord: (f64, f64) = (map_value(v,(pts.min,pts.max),graph_x_range),current_bar_y_range.0-single_bar_height/2.0);
+            context.move_to(cord.0, cord.1);
+            context.arc(cord.0,cord.1,outlier_radius,0.0,std::f64::consts::PI*2.0).unwrap();
+        }
+        context.fill();
+        fill_rect_xy(&context, map_value(pts.q1, (pts.min,pts.max), graph_x_range), current_bar_y_range.0, 
+        map_value(pts.q3, (pts.min,pts.max), graph_x_range), current_bar_y_range.1);
+        context.stroke();
+        context.begin_path();
+        context.move_to(map_value(pts.median, (pts.min,pts.max), graph_x_range), current_bar_y_range.0);
+        context.set_stroke_style(&JsValue::from_str(&ctx.props().colors[4]));
+        context.line_to(map_value(pts.median, (pts.min,pts.max), graph_x_range),current_bar_y_range.1);
+        context.stroke();
     }
+}
+
+fn fill_rect_xy(context: &CanvasRenderingContext2d, x1: f64, y1: f64, x2: f64, y2: f64){
+    context.fill_rect(x1, y1, x2-x1, y2-y1)
 }
 
 #[derive(Clone, PartialEq, Properties)]
@@ -287,10 +390,14 @@ impl Component for Bargraph{
         context.set_fill_style(&JsValue::from_str(&ctx.props().colors[3]));
         for child in ctx.props().children.clone(){
             let props = &child.props;
-            context.fill_rect(map_value(props.width.0,ctx.props().x_range,graph_x_range),
+            fill_rect_xy(&context, map_value(props.width.0,ctx.props().x_range,graph_x_range),
             map_value(props.height.0,ctx.props().y_range,graph_y_range),
-            map_value(props.width.1-props.width.0,ctx.props().x_range,(0.0,graph_x_range.1-graph_x_range.0)),
-            map_value(-props.height.1+props.height.0,ctx.props().y_range,(0.0,graph_y_range.0-graph_y_range.1)))
+            map_value(props.width.1,ctx.props().x_range,graph_x_range),
+            map_value(props.height.1,ctx.props().y_range,graph_y_range));
+            //context.fill_rect(map_value(props.width.0,ctx.props().x_range,graph_x_range),
+            //map_value(props.height.0,ctx.props().y_range,graph_y_range),
+            //map_value(props.width.1-props.width.0,ctx.props().x_range,(0.0,graph_x_range.1-graph_x_range.0)),
+            //map_value(-props.height.1+props.height.0,ctx.props().y_range,(0.0,graph_y_range.0-graph_y_range.1)))
         }
         context.stroke();
         draw_numberline(&context, ctx.props().x_range, (graph_x_range.0,graph_y_range.0), (graph_x_range.1,graph_y_range.0), "15px Verdana", -10.0, &ctx.props().colors[4], &ctx.props().colors[2]);
