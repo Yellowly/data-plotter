@@ -5,13 +5,7 @@ use web_sys::{HtmlInputElement, HtmlCanvasElement, CanvasRenderingContext2d};
 use wasm_bindgen::{JsCast, JsValue};
 
 fn main(){
-    let nums: Vec<f64> = vec![0.55,1.00,2.20,4.00,6.50,12.00,16.00];
-    let mut nums_new: Vec<f64> = Vec::new();
-    for n in nums{
-        nums_new.push(n.powi(3));
-    }
-    println!("{:?}",nums_new);
-    //yew::start_app::<MainComponent>();
+    yew::start_app::<MainComponent>();
 }
 
 //vec must be sorted
